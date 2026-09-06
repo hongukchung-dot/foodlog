@@ -2,30 +2,31 @@
 
 기존 newsmonitor 인스턴스를 재사용한다. 포트 **8090**.
 
+## 자동 배치 (권장)
+
 ```bash
-# 1. 코드 올리기
-sudo mkdir -p /opt/foodlog && sudo chown ubuntu:ubuntu /opt/foodlog
-scp server/server.py server/requirements.txt ubuntu@<서버>:/opt/foodlog/
-
-# 2. 가상환경
-cd /opt/foodlog
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
-
-# 3. 환경 파일
-sudo cp foodlog.env.example /etc/foodlog.env
-sudo chmod 600 /etc/foodlog.env
-sudo nano /etc/foodlog.env   # 키·토큰 채우기
-
-# 4. systemd
-sudo cp foodlog.service /etc/systemd/system/foodlog.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now foodlog
-
-# 5. Tailscale Funnel — 기존 newsmonitor 설정에 경로 추가
-sudo tailscale funnel --bg --set-path /foodlog http://127.0.0.1:8090
-# 앱의 서버 주소: https://<장비명>.<tailnet>.ts.net/foodlog
+ssh ubuntu@<서버주소>
+git clone https://github.com/hongukchung-dot/foodlog.git   # 비공개면 토큰 필요, 아래 참고
+cd foodlog
+./server/deploy.sh
 ```
+
+스크립트가 하는 일: 패키지 설치 → `/opt/foodlog` 코드 배치 → venv/의존성 →
+`/etc/foodlog.env` 생성(앱 토큰 자동 생성, admin/friend 별도) → systemd 등록·기동 →
+로컬 헬스체크 → Tailscale Funnel `/foodlog` 경로 설정.
+
+처음 실행 후 `sudo nano /etc/foodlog.env` 로 `ANTHROPIC_API_KEY`(필수),
+`MFDS_API_KEY`(선택)를 채우고 `sudo systemctl restart foodlog`.
+
+- 비공개 저장소 클론: GitHub → Settings → Developer settings → Fine-grained token
+  (이 저장소 Contents: Read)을 만들어
+  `git clone https://<토큰>@github.com/hongukchung-dot/foodlog.git`
+- 코드 갱신 배포: `cd ~/foodlog && git pull && ./server/deploy.sh`
+- 로그 확인: `sudo journalctl -u foodlog -f`
+
+## 수동 배치 (참고)
+
+`deploy.sh` 내용과 동일 — 코드 복사 → venv → env 파일 → systemd → Funnel 순서.
 
 ## curl 검증
 
