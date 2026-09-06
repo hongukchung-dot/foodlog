@@ -45,8 +45,14 @@ curl -s -X POST $BASE/v1/analyze \
 curl -s -H "X-App-Token: $TOKEN" $BASE/v1/barcode/8801043015337
 ```
 
-## 확인 필요 (스펙 10절)
+## 확인 필요
 
-- 식약처 Open API의 **C005(바코드연계 제품정보) / I2790(영양성분)** 서비스명·필드명은
-  공식 문서로 확인 후 필요 시 `_lookup_mfds()` 수정. 필드가 없으면 자동으로
-  Open Food Facts 로 폴백하므로 동작 자체는 깨지지 않는다.
+- `MFDS_API_KEY`는 공공데이터포털 [식품영양성분DB정보](https://www.data.go.kr/data/15127578/openapi.do)
+  인증키(**Decoding 키**). 배치 후 아래로 검증:
+
+  ```bash
+  curl -s -H "X-App-Token: $TOKEN" "$BASE/v1/food/search?q=김치찌개"
+  ```
+
+  결과가 비어 있으면 공식 문서의 응답 필드명 기준으로 `server.py` `food_search()`의
+  필드 매핑(AMT_NUM1 등)을 조정한다.

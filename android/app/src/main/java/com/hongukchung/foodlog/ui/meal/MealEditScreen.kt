@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -52,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +65,7 @@ import com.hongukchung.foodlog.data.db.MealType
 import com.hongukchung.foodlog.data.db.Product
 import com.hongukchung.foodlog.data.db.myKcal
 import com.hongukchung.foodlog.data.db.totalKcal
+import com.hongukchung.foodlog.net.FoodSearchItemDto
 import com.hongukchung.foodlog.ui.PhotoThumb
 import com.hongukchung.foodlog.ui.Routes
 import com.hongukchung.foodlog.ui.appViewModel
@@ -71,6 +74,7 @@ import com.hongukchung.foodlog.util.formatKcal
 import com.hongukchung.foodlog.util.label
 import com.hongukchung.foodlog.util.toDateTimeString
 import com.hongukchung.foodlog.util.toLocalDateTime
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -352,6 +356,11 @@ fun MealEditScreen(nav: NavHostController, mealId: String) {
                 showManualDialog = false
                 vm.addManualItem(name, kcal, portion)
             },
+            onSearch = { query -> vm.searchFood(query) },
+            onPick = { picked ->
+                showManualDialog = false
+                vm.addItemFromSearch(picked)
+            },
         )
     }
 
@@ -529,17 +538,72 @@ fun ItemEditSheet(
 private fun ManualItemDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, kcal: Double, portionDesc: String?) -> Unit,
+    onSearch: suspend (String) -> List<FoodSearchItemDto>,
+    onPick: (FoodSearchItemDto) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var kcal by remember { mutableStateOf("") }
     var portion by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
+    var results by remember { mutableStateOf<List<FoodSearchItemDto>>(emptyList()) }
+    var searched by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("직접 입력") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("이름") })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it },
+                        label = { Text("이름") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    // 식약처 식품영양성분DB(공공데이터포털) 검색 — 이름 입력 후 탭
+                    IconButton(
+                        onClick = {
+                            if (name.isBlank() || searching) return@IconButton
+                            scope.launch {
+                                searching = true
+                                results = onSearch(name.trim())
+                                searched = true
+                                searching = false
+                            }
+                        },
+                    ) {
+                        if (searching) {
+                            CircularProgressIndicator(Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Default.Search, contentDescription = "영양DB 검색")
+                        }
+                    }
+                }
+                results.take(5).forEach { result ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(result) }
+                            .padding(vertical = 6.dp),
+                    ) {
+                        Text(result.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            listOfNotNull(
+                                "${formatKcal(result.kcalPerServing)} / ${result.servingDesc ?: "100g 기준"}",
+                                result.maker,
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (searched && results.isEmpty() && !searching) {
+                    Text(
+                        "영양DB에서 찾지 못했습니다 — 아래에 직접 입력하세요",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedTextField(value = kcal, onValueChange = { kcal = it }, label = { Text("열량 (kcal)") })
                 OutlinedTextField(
                     value = portion, onValueChange = { portion = it },

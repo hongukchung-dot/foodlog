@@ -13,6 +13,7 @@ import com.hongukchung.foodlog.data.db.Product
 import com.hongukchung.foodlog.net.AnalyzeImageDto
 import com.hongukchung.foodlog.net.AnalyzeResponseDto
 import com.hongukchung.foodlog.net.ApiException
+import com.hongukchung.foodlog.net.FoodSearchItemDto
 import com.hongukchung.foodlog.util.toIso8601
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -42,6 +43,17 @@ class MealEditViewModel(
     private var userChangedType = false
 
     fun consumeMessage() { message.value = null }
+
+    /** 식품명으로 영양DB 검색 (직접 입력 보조) — 실패 시 빈 목록 + 메시지 */
+    suspend fun searchFood(query: String): List<FoodSearchItemDto> = try {
+        appContainer.api.searchFood(query)
+    } catch (e: ApiException) {
+        message.value = e.message
+        emptyList()
+    } catch (e: IOException) {
+        message.value = "영양DB 검색에 실패했습니다"
+        emptyList()
+    }
 
     // ------------------------------------------------------------------ 끼니 속성
     fun setMealType(type: MealType) {
@@ -168,6 +180,27 @@ class MealEditViewModel(
                     source = ItemSource.MANUAL,
                     portionDesc = portionDesc,
                     kcalPerUnit = kcal,
+                    sortOrder = db.foodItemDao().nextSortOrder(mealId),
+                ),
+            )
+            appContainer.mealRepository.touchMeal(mealId)
+        }
+    }
+
+    /** 영양DB 검색 결과 → 항목 추가 (탄단지 포함) */
+    fun addItemFromSearch(picked: FoodSearchItemDto) {
+        viewModelScope.launch {
+            db.foodItemDao().insert(
+                FoodItem(
+                    id = UUID.randomUUID().toString(),
+                    mealId = mealId,
+                    name = picked.name,
+                    source = ItemSource.MANUAL,
+                    portionDesc = picked.servingDesc,
+                    kcalPerUnit = picked.kcalPerServing,
+                    carbsG = picked.carbsG,
+                    proteinG = picked.proteinG,
+                    fatG = picked.fatG,
                     sortOrder = db.foodItemDao().nextSortOrder(mealId),
                 ),
             )

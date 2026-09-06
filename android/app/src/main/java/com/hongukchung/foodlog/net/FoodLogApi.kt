@@ -81,6 +81,22 @@ data class BarcodeResponseDto(
     val source: String? = null,
 )
 
+@Serializable
+data class FoodSearchItemDto(
+    val name: String,
+    @SerialName("serving_desc") val servingDesc: String? = null,
+    @SerialName("kcal_per_serving") val kcalPerServing: Double,
+    @SerialName("carbs_g") val carbsG: Double? = null,
+    @SerialName("protein_g") val proteinG: Double? = null,
+    @SerialName("fat_g") val fatG: Double? = null,
+    val maker: String? = null,
+)
+
+@Serializable
+data class FoodSearchResponseDto(
+    val items: List<FoodSearchItemDto> = emptyList(),
+)
+
 class ApiException(val code: Int, message: String) : IOException(message)
 
 // ---------------------------------------------------------------------------
@@ -123,6 +139,12 @@ class FoodLogApi(private val settingsProvider: suspend () -> Settings) {
 
     suspend fun lookupBarcode(code: String): BarcodeResponseDto = withContext(Dispatchers.IO) {
         json.decodeFromString<BarcodeResponseDto>(get("/v1/barcode/$code"))
+    }
+
+    /** 식품명 → 영양성분 검색 (공공데이터포털 식품영양성분DB, 서버 경유) */
+    suspend fun searchFood(query: String): List<FoodSearchItemDto> = withContext(Dispatchers.IO) {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        json.decodeFromString<FoodSearchResponseDto>(get("/v1/food/search?q=$encoded")).items
     }
 
     suspend fun health(): Boolean = withContext(Dispatchers.IO) {

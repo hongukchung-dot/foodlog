@@ -42,7 +42,8 @@ GitHub Actions(`.github/workflows/ci.yml`)가 푸시마다 두 플레이버 APK�
 | 사진 가져오기 | 홈 FAB·미분석함 버튼으로 다른 앱 사진 선택, 또는 갤러리/메신저에서 "공유 → 푸드로그"로 전송 → 미분석 사진함 |
 | 미분석 사진함 | 90분 간격 자동 그룹 제안 → 체크박스 조정 → 끼니 만들기 |
 | 끼니 편집 | 사진 스트립, 유형/시각/인원수, AI 분석(병합·교체), 배수·공유 토글, 신뢰도<0.5 주황 표시, 상세 수정 시트, 내 몫 합계 |
-| 바코드 | ML Kit(번들형) 실시간 스캔 → 로컬 캐시 → 서버 조회 → 실패 시 직접 입력(재사용 저장) 또는 성분표 판독 |
+| 바코드 | ML Kit(번들형) 실시간 스캔 → 로컬 캐시 → 서버 조회(OFF) → 실패 시 직접 입력(재사용 저장) 또는 성분표 판독 |
+| 영양DB 검색 | 직접 입력 시 식품명으로 식약처 영양성분DB 검색 → 열량·탄단지 자동 채움 |
 | 통계 | 일(14일 막대+7일 이동평균+목표선)/주(12주)/월(12개월) Vico 차트, 요약, 유형별 비중, 날짜 탭 → 그날 끼니 |
 | 설정 | 서버 주소·토큰(admin만), 목표 열량, 백업/복원(SAF zip), 저장 용량·원본 정리 |
 
@@ -58,15 +59,19 @@ systemd `foodlog.service`(포트 8090), Tailscale Funnel `--set-path /foodlog`.
 - `POST /v1/analyze` — 이미지들을 Anthropic Messages 한 요청으로 전송,
   모델 `claude-sonnet-5`, max_tokens 2000, 시스템 프롬프트 prompt caching.
   JSON 파싱 실패 시 1회 재시도 후 502. 토큰별 일일 상한(기본 200회) 초과 시 429
-- `GET /v1/barcode/{code}` — 식약처(C005→I2790) → Open Food Facts → 서버 SQLite 캐시
+- `GET /v1/barcode/{code}` — Open Food Facts → 서버 SQLite 캐시 (식약처 바코드연계
+  C005는 2017년 이후 갱신 중단으로 제거. 실패 시 앱에서 직접 입력·성분표 판독 폴백)
+- `GET /v1/food/search?q=식품명` — 공공데이터포털 [식품영양성분DB정보](https://www.data.go.kr/data/15127578/openapi.do)
+  로 식품명 → 열량·탄단지 검색. 앱의 '직접 입력' 다이얼로그에서 사용
 - `GET /v1/health`
 
 테스트: `python -m pytest -q server` (Anthropic 호출은 목)
 
 ## 확인·검증 필요 (스펙 10절)
 
-- **식약처 Open API**: C005(바코드연계)·I2790(영양성분) 서비스명/필드명을 공식 문서로
-  확인 후 `server.py`의 `_lookup_mfds()` 조정. 실패해도 OFF로 자동 폴백
+- **식품영양성분DB 응답 필드명**: `/v1/food/search`의 필드 매핑(AMT_NUM1 등)은 방어적
+  후보 매핑이므로, 실제 키로 1회 호출해 결과가 비면 공식 문서의 필드명으로
+  `server.py`의 `food_search()` 조정
 - **Vico 2.1.3 API**: Compose 버전 호환 — CI 빌드로 확인
 - **ML Kit 바코드**: 번들형 선택(오프라인 안정, APK 약 +3MB)
 

@@ -112,3 +112,46 @@ def test_barcode_cache_roundtrip():
         body = r.json()
         assert body["found"] is True and body["product"]["name"] == "테스트과자"
         assert body["source"] == "MANUAL"
+
+
+def test_food_search_mocked():
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"header": {"resultCode": "00"}, "body": {"totalCount": 1, "items": [
+                {"item": {"FOOD_NM_KR": "김치찌개", "AMT_NUM1": "58.2", "AMT_NUM3": "4.1",
+                          "AMT_NUM4": "2.9", "AMT_NUM6": "3.5", "SERVING_SIZE": "100g"}},
+            ]}}
+
+    original_key = server.MFDS_API_KEY
+    server.MFDS_API_KEY = "dummy-key"
+    try:
+        with make_client() as c:
+            server.app.state.http = MagicMock()
+            server.app.state.http.get = AsyncMock(return_value=FakeResponse())
+            server.app.state.http.aclose = AsyncMock()
+            r = c.get("/v1/food/search", params={"q": "김치찌개"},
+                      headers={"X-App-Token": "tok-admin"})
+            assert r.status_code == 200, r.text
+            items = r.json()["items"]
+            assert items[0]["name"] == "김치찌개"
+            assert items[0]["kcal_per_serving"] == 58.2
+            assert items[0]["serving_desc"] == "100g 기준"
+    finally:
+        server.MFDS_API_KEY = original_key
+
+
+def test_food_search_requires_key():
+    original_key = server.MFDS_API_KEY
+    server.MFDS_API_KEY = ""
+    try:
+        with make_client() as c:
+            r = c.get("/v1/food/search", params={"q": "김치찌개"},
+                      headers={"X-App-Token": "tok-admin"})
+            assert r.status_code == 503
+    finally:
+        server.MFDS_API_KEY = original_key

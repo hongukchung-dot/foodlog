@@ -303,10 +303,9 @@ async def analyze(req: AnalyzeRequest, token: str = Depends(require_token)) -> d
 
 # ---------------------------------------------------------------------------
 # /v1/barcode/{code}
-# 1) 식약처 식품안전나라 C005(바코드연계 제품정보) → I2790(가공식품 영양성분)
-#    ※ 서비스명·필드명은 공식 문서 기준으로 확인 필요 (스펙 10절) — 필드가 없으면
-#      방어적으로 건너뛰고 OFF 로 폴백한다.
-# 2) Open Food Facts v2
+# 식약처 바코드연계(C005)는 2017년 이후 갱신 중단으로 제거했다.
+# 조회 순서: 서버 SQLite 캐시 → Open Food Facts v2. 실패 시 앱에서
+# 직접 입력(재사용 저장) 또는 영양성분표 AI 판독으로 폴백한다.
 # ---------------------------------------------------------------------------
 def _to_float(v: Any) -> Optional[float]:
     try:
@@ -315,55 +314,6 @@ def _to_float(v: Any) -> Optional[float]:
             return None
         return float(re.sub(r"[^0-9.\-]", "", s) or "nan")
     except (ValueError, TypeError):
-        return None
-
-
-async def _lookup_mfds(http: httpx.AsyncClient, code: str) -> Optional[dict[str, Any]]:
-    if not MFDS_API_KEY:
-        return None
-    try:
-        # C005: 유통 바코드 → 품목보고번호/제품명
-        url = f"https://openapi.foodsafetykorea.go.kr/api/{MFDS_API_KEY}/C005/json/1/5/BAR_CD={code}"
-        r = await http.get(url)
-        r.raise_for_status()
-        rows = (r.json().get("C005") or {}).get("row") or []
-        if not rows:
-            return None
-        row = rows[0]
-        name = row.get("PRDLST_NM") or row.get("PRDT_NM")
-        report_no = row.get("PRDLST_REPORT_NO")
-        brand = row.get("BSSH_NM")
-        if not name:
-            return None
-
-        product: dict[str, Any] = {
-            "barcode": code, "name": name, "brand": brand,
-            "serving_desc": None, "kcal_per_serving": None,
-            "carbs_g": None, "protein_g": None, "fat_g": None,
-            "source": "MFDS",
-        }
-        if report_no:
-            # I2790: 품목보고번호 → 영양성분 (NUTR_CONT1=열량, 2=탄수화물, 3=단백질, 4=지방)
-            url2 = (f"https://openapi.foodsafetykorea.go.kr/api/{MFDS_API_KEY}"
-                    f"/I2790/json/1/5/PRDLST_REPORT_NO={report_no}")
-            r2 = await http.get(url2)
-            if r2.status_code == 200:
-                rows2 = (r2.json().get("I2790") or {}).get("row") or []
-                if rows2:
-                    n = rows2[0]
-                    product["kcal_per_serving"] = _to_float(n.get("NUTR_CONT1"))
-                    product["carbs_g"] = _to_float(n.get("NUTR_CONT2"))
-                    product["protein_g"] = _to_float(n.get("NUTR_CONT3"))
-                    product["fat_g"] = _to_float(n.get("NUTR_CONT4"))
-                    serving = n.get("SERVING_SIZE") or n.get("SERVING_WT")
-                    unit = n.get("SERVING_UNIT") or ""
-                    if serving:
-                        product["serving_desc"] = f"{serving}{unit}".strip()
-        if product["kcal_per_serving"] is None:
-            return None  # 열량 없이는 쓸모가 없으므로 다음 소스로
-        return product
-    except (httpx.HTTPError, ValueError, KeyError) as e:
-        logger.warning("MFDS lookup failed for %s: %s", code, e)
         return None
 
 
@@ -422,7 +372,7 @@ async def barcode(code: str, token: str = Depends(require_token)) -> dict[str, A
         return {"found": True, "product": cached, "source": source}
 
     http: httpx.AsyncClient = app.state.http
-    product = await _lookup_mfds(http, code) or await _lookup_off(http, code)
+    product = await _lookup_off(http, code)
     log_usage(token, "barcode")
     if not product:
         return {"found": False}
@@ -430,3 +380,69 @@ async def barcode(code: str, token: str = Depends(require_token)) -> dict[str, A
     cache_put_product(product)
     source = product.pop("source")
     return {"found": True, "product": product, "source": source}
+
+
+# ---------------------------------------------------------------------------
+# /v1/food/search — 식품명으로 영양성분 검색
+# 공공데이터포털 "식품의약품안전처_식품영양성분DB정보" (data.go.kr/data/15127578)
+# MFDS_API_KEY = 공공데이터포털 일반 인증키(Decoding 키를 그대로 넣는다).
+# ※ 응답 필드명은 공식 문서 기준 확인 필요 — 후보 키를 순서대로 시도하는
+#   방어적 매핑이라 필드가 달라도 조용히 건너뛴다.
+# ---------------------------------------------------------------------------
+FOOD_DB_URL = "https://apis.data.go.kr/1471000/FoodNtrCpntDbInfo02/getFoodNtrCpntDbInq02"
+
+
+def _pick(row: dict[str, Any], *keys: str) -> Optional[str]:
+    for k in keys:
+        v = row.get(k)
+        if v is not None and str(v).strip() not in ("", "-", "N/A"):
+            return str(v).strip()
+    return None
+
+
+@app.get("/v1/food/search")
+async def food_search(q: str, page: int = 1, token: str = Depends(require_token)) -> dict[str, Any]:
+    q = q.strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="q is empty")
+    if not MFDS_API_KEY:
+        raise HTTPException(status_code=503, detail="MFDS_API_KEY not configured")
+
+    http: httpx.AsyncClient = app.state.http
+    try:
+        r = await http.get(FOOD_DB_URL, params={
+            "serviceKey": MFDS_API_KEY,
+            "type": "json",
+            "pageNo": max(page, 1),
+            "numOfRows": 20,
+            "FOOD_NM_KR": q,
+        })
+        r.raise_for_status()
+        body = r.json().get("body") or {}
+        rows = body.get("items") or []
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning("food search failed for %r: %s", q, e)
+        raise HTTPException(status_code=502, detail="nutrition DB lookup failed")
+
+    items: list[dict[str, Any]] = []
+    for entry in rows:
+        row = entry.get("item", entry) if isinstance(entry, dict) else {}
+        name = _pick(row, "FOOD_NM_KR", "DESC_KOR", "foodNm")
+        kcal = _to_float(_pick(row, "AMT_NUM1", "NUTR_CONT1", "enerc"))
+        if not name or kcal is None:
+            continue
+        # 영양성분함량 기준량 (보통 "100g") / 1회 섭취참고량
+        basis = _pick(row, "SERVING_SIZE", "NUTRI_AMOUNT_SERVING", "Z10500", "servingSize")
+        serving_desc = f"{basis} 기준" if basis else "100g 기준"
+        items.append({
+            "name": name,
+            "serving_desc": serving_desc,
+            "kcal_per_serving": kcal,
+            "carbs_g": _to_float(_pick(row, "AMT_NUM6", "NUTR_CONT2", "chocdf")),
+            "protein_g": _to_float(_pick(row, "AMT_NUM3", "NUTR_CONT3", "prot")),
+            "fat_g": _to_float(_pick(row, "AMT_NUM4", "NUTR_CONT4", "fatce")),
+            "maker": _pick(row, "MAKER_NM", "COMPANY_NM", "BSSH_NM"),
+        })
+
+    log_usage(token, "food_search")
+    return {"items": items}
