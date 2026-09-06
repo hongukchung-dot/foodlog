@@ -1,5 +1,9 @@
 package com.hongukchung.foodlog.ui.inbox
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +69,16 @@ class InboxViewModel(private val appContainer: FoodLogApp) : ViewModel() {
     fun deletePhoto(photo: Photo) {
         viewModelScope.launch { appContainer.mealRepository.deletePhoto(photo) }
     }
+
+    /** 다른 앱으로 찍은 사진 가져오기 (EXIF 촬영 시각 기준으로 그룹에 반영) */
+    fun importPhotos(uris: List<Uri>) {
+        viewModelScope.launch {
+            for (uri in uris) {
+                val photo = appContainer.photoStore.importFromUri(uri) ?: continue
+                appContainer.database.photoDao().insert(photo)
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +91,10 @@ fun InboxScreen(nav: NavHostController) {
     // 그룹 경계는 사용자가 체크박스로 조정
     var selected by remember { mutableStateOf(setOf<String>()) }
 
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(20),
+    ) { uris -> if (uris.isNotEmpty()) vm.importPhotos(uris) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -83,6 +102,17 @@ fun InboxScreen(nav: NavHostController) {
                 navigationIcon = {
                     IconButton(onClick = { nav.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "뒤로")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        importLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly,
+                            ),
+                        )
+                    }) {
+                        Icon(Icons.Default.PhotoLibrary, contentDescription = "사진 가져오기")
                     }
                 },
             )

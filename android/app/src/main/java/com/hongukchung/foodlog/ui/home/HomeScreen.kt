@@ -1,5 +1,9 @@
 package com.hongukchung.foodlog.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
@@ -73,6 +78,17 @@ class HomeViewModel(private val appContainer: FoodLogApp) : ViewModel() {
     val settings = appContainer.settings.settings
 
     suspend fun createEmptyMeal(): String = appContainer.mealRepository.createEmptyMeal()
+
+    /** 다른 앱으로 찍은 사진 가져오기 → 미분석 사진함 */
+    suspend fun importPhotos(uris: List<Uri>): Int {
+        var imported = 0
+        for (uri in uris) {
+            val photo = appContainer.photoStore.importFromUri(uri) ?: continue
+            appContainer.database.photoDao().insert(photo)
+            imported++
+        }
+        return imported
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +101,17 @@ fun HomeScreen(nav: NavHostController) {
     val settings by vm.settings.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     var fabExpanded by remember { mutableStateOf(false) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(20),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                vm.importPhotos(uris)
+                nav.navigate(Routes.INBOX)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -112,6 +139,15 @@ fun HomeScreen(nav: NavHostController) {
                         fabExpanded = false
                         scope.launch { nav.navigate(Routes.barcode(vm.createEmptyMeal())) }
                     }) { Icon(Icons.Default.QrCodeScanner, contentDescription = "바코드") }
+                    Spacer(Modifier.height(12.dp))
+                    SmallFloatingActionButton(onClick = {
+                        fabExpanded = false
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly,
+                            ),
+                        )
+                    }) { Icon(Icons.Default.PhotoLibrary, contentDescription = "갤러리에서 가져오기") }
                     Spacer(Modifier.height(12.dp))
                     SmallFloatingActionButton(onClick = {
                         fabExpanded = false

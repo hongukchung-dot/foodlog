@@ -1,6 +1,7 @@
 package com.hongukchung.foodlog.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -32,7 +33,14 @@ object Routes {
 }
 
 @Composable
-fun FoodLogNavHost(navController: NavHostController = rememberNavController()) {
+fun FoodLogNavHost(
+    navController: NavHostController = rememberNavController(),
+    startInInbox: Boolean = false,
+) {
+    // 공유 인텐트로 사진을 받고 시작한 경우 미분석 사진함으로 바로 이동
+    LaunchedEffect(Unit) {
+        if (startInInbox) navController.navigate(Routes.INBOX)
+    }
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) { HomeScreen(navController) }
         composable(Routes.CAPTURE) { CaptureScreen(navController) }
