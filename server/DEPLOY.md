@@ -5,7 +5,7 @@
 ```bash
 # 1. 코드 올리기
 sudo mkdir -p /opt/foodlog && sudo chown ubuntu:ubuntu /opt/foodlog
-scp foodlog/server/server.py foodlog/server/requirements.txt ubuntu@<서버>:/opt/foodlog/
+scp server/server.py server/requirements.txt ubuntu@<서버>:/opt/foodlog/
 
 # 2. 가상환경
 cd /opt/foodlog

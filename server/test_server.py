@@ -1,6 +1,6 @@
 """서버 단위 테스트 — Anthropic 호출은 목으로 대체한다.
 
-실행: python -m pytest -q foodlog/server
+실행: python -m pytest -q server
 """
 import base64
 import json

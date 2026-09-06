@@ -5,7 +5,6 @@
 (음식 사진 열량 기록 앱 — 구현 스펙) 기반 구현.
 
 ```
-foodlog/
 ├── android/   Kotlin + Jetpack Compose 앱 (admin/friend 플레이버)
 └── server/    FastAPI 프록시 (Oracle 인스턴스, Anthropic·식약처·OFF 키 보관)
 ```
@@ -20,7 +19,7 @@ foodlog/
 ## 앱 빌드
 
 ```bash
-cd foodlog/android
+cd android
 # 선택: 플레이버 기본값 주입 (없으면 앱 설정 화면에서 입력)
 cat >> local.properties <<EOF
 FOODLOG_SERVER_URL=https://<host>.ts.net/foodlog
@@ -31,7 +30,7 @@ EOF
 ./gradlew assembleFriendDebug    # 지인 배포용 (서버 설정 편집 불가, 앱ID .friend)
 ```
 
-GitHub Actions(`.github/workflows/foodlog.yml`)가 푸시마다 두 플레이버 APK를
+GitHub Actions(`.github/workflows/ci.yml`)가 푸시마다 두 플레이버 APK를
 빌드해 아티팩트로 올린다.
 
 ### 구현된 화면 (스펙 4절)
@@ -61,7 +60,7 @@ systemd `foodlog.service`(포트 8090), Tailscale Funnel `--set-path /foodlog`.
 - `GET /v1/barcode/{code}` — 식약처(C005→I2790) → Open Food Facts → 서버 SQLite 캐시
 - `GET /v1/health`
 
-테스트: `python -m pytest -q foodlog/server` (Anthropic 호출은 목)
+테스트: `python -m pytest -q server` (Anthropic 호출은 목)
 
 ## 확인·검증 필요 (스펙 10절)
 

@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 로컬 캐시 DB / 비밀값
+*.db
+.env
+.env.*
+!*.env.example
+
+# 기타
+.DS_Store
+*.log
