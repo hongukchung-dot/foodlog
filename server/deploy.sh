@@ -53,13 +53,24 @@ sudo sed -i "s/^User=.*/User=$USER/; s/^Group=.*/Group=$USER/" /etc/systemd/syst
 sudo systemctl daemon-reload
 sudo systemctl enable foodlog >/dev/null
 sudo systemctl restart foodlog
-sleep 2
 
-echo "== 6. 로컬 헬스체크 =="
-if curl -fsS "http://127.0.0.1:$PORT/v1/health"; then
-    echo "  ← health OK"
-else
-    echo "  !! 서비스가 응답하지 않습니다. 로그: sudo journalctl -u foodlog -n 50"
+echo "== 6. 로컬 헬스체크 (최대 30초 대기) =="
+ok=0
+for i in $(seq 1 30); do
+    if curl -fsS "http://127.0.0.1:$PORT/v1/health" 2>/dev/null; then
+        echo "  ← health OK (${i}s)"
+        ok=1
+        break
+    fi
+    # 기동 실패로 이미 죽었으면 바로 로그 출력
+    if ! systemctl is-active --quiet foodlog; then
+        break
+    fi
+    sleep 1
+done
+if [ "$ok" != "1" ]; then
+    echo "  !! 서비스가 응답하지 않습니다. 최근 로그:"
+    sudo journalctl -u foodlog -n 30 --no-pager | sed 's/^/    /'
     exit 1
 fi
 
