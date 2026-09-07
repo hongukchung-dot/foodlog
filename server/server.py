@@ -23,6 +23,7 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Literal, Optional
@@ -38,7 +39,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 DB_PATH = os.environ.get("FOODLOG_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache.db"))
 APP_TOKENS = {t.strip() for t in os.environ.get("APP_TOKENS", "").split(",") if t.strip()}
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "200"))
-MFDS_API_KEY = os.environ.get("MFDS_API_KEY", "")
+
+
+def _normalize_service_key(key: str) -> str:
+    """공공데이터포털 Encoding 키(%2F 등 포함)가 들어와도 Decoding 키로 정규화.
+    httpx가 파라미터를 다시 인코딩하므로 키는 반드시 디코딩 상태여야 한다."""
+    key = key.strip()
+    if "%" in key:
+        return urllib.parse.unquote(key)
+    return key
+
+
+MFDS_API_KEY = _normalize_service_key(os.environ.get("MFDS_API_KEY", ""))
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 6 * 1024 * 1024  # base64 디코드 후 기준
