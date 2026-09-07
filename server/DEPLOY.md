@@ -52,7 +52,8 @@ curl -s -H "X-App-Token: $TOKEN" $BASE/v1/barcode/8801043015337
   인증키(**Decoding 키**). 배치 후 아래로 검증:
 
   ```bash
-  curl -s -H "X-App-Token: $TOKEN" "$BASE/v1/food/search?q=김치찌개"
+  # 한글 쿼리는 반드시 --data-urlencode 로 (curl은 URL 인코딩을 자동으로 하지 않음)
+  curl -s -G -H "X-App-Token: $TOKEN" --data-urlencode "q=김치찌개" "$BASE/v1/food/search"
   ```
 
   결과가 비어 있으면 공식 문서의 응답 필드명 기준으로 `server.py` `food_search()`의

@@ -93,4 +93,4 @@ fi
 echo "2) 앱 설정 화면: 서버 주소 = https://<장비명>.<tailnet>.ts.net/foodlog, 위 앱 토큰 입력"
 echo "3) 외부 검증:"
 echo "   curl -s https://<장비명>.<tailnet>.ts.net/foodlog/v1/health"
-echo "   curl -s -H 'X-App-Token: <토큰>' 'https://<장비명>.<tailnet>.ts.net/foodlog/v1/food/search?q=김치찌개'"
+echo "   curl -s -G -H 'X-App-Token: <토큰>' --data-urlencode 'q=김치찌개' https://<장비명>.<tailnet>.ts.net/foodlog/v1/food/search"
